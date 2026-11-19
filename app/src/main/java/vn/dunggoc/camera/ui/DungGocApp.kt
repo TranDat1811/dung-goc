@@ -173,6 +173,7 @@ private fun ShootingScreen(preferences: Preferences, active: Boolean, model: Cam
     }
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val landscape = maxWidth > maxHeight
+        val portraitControlsHeight = maxHeight * 0.5f
         val cameraContent: @Composable (Modifier) -> Unit = { cameraModifier ->
             Box(cameraModifier.clip(RoundedCornerShape(24.dp)).background(Panel)) {
                 if (active) CameraPreview(preferences, retry,
@@ -236,7 +237,7 @@ private fun ShootingScreen(preferences: Preferences, active: Boolean, model: Cam
                 cameraContent(Modifier.fillMaxWidth().weight(1f))
                 // A fixed control region keeps new instruction text from resizing
                 // the shared camera ViewPort and restarting the camera session.
-                controls(Modifier.fillMaxWidth().height(maxHeight * 0.5f))
+                controls(Modifier.fillMaxWidth().height(portraitControlsHeight))
             }
         }
     }

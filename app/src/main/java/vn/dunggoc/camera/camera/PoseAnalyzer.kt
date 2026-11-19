@@ -65,6 +65,10 @@ class PoseAnalyzer(
             val bitmap = Bitmap.createBitmap(croppedBitmap, 0, 0, croppedBitmap.width, croppedBitmap.height,
                 Matrix().apply { postRotate(image.imageInfo.rotationDegrees.toFloat()) }, false)
             upright = bitmap
+            // MPImage.close() recycles the wrapped bitmap. Read every pixel and
+            // dimension we need before handing ownership to MediaPipe.
+            val aspectRatio = bitmap.width.toFloat() / bitmap.height
+            val brightness = luminance(bitmap)
             val mpImage = BitmapImageBuilder(bitmap).build()
             val result = try { detector.detectForVideo(mpImage, now) } finally { mpImage.close() }
             val bodies = result.landmarks().map { landmarks ->
@@ -72,8 +76,8 @@ class PoseAnalyzer(
                     Point(point.x(), point.y(), minOf(point.visibility().orElse(0f), point.presence().orElse(0f)))
                 })
             }
-            onGuidance(coach.update(Observation(bodies, bitmap.width.toFloat() / bitmap.height,
-                roll.get(), luminance(bitmap)), preferences.get(), now))
+            onGuidance(coach.update(Observation(bodies, aspectRatio,
+                roll.get(), brightness), preferences.get(), now))
             // Never queue inference work. Slow devices analyze less frequently.
             val elapsed = SystemClock.uptimeMillis() - now
             intervalMs = (elapsed * 2).coerceIn(100L, 500L)
@@ -85,7 +89,7 @@ class PoseAnalyzer(
             failed = true
             onError(error)
         } finally {
-            listOfNotNull(upright, cropped, source).distinct().forEach { it.recycle() }
+            listOfNotNull(upright, cropped, source).distinct().filterNot { it.isRecycled }.forEach { it.recycle() }
             image.close()
         }
     }

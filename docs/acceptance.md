@@ -2,6 +2,18 @@
 
 Các mục bên dưới là việc cần thực hiện trên máy thật; chưa đánh dấu đạt khi chưa có bằng chứng.
 
+## Kiểm thử tự động trên Android
+
+Kết nối điện thoại đã bật USB debugging hoặc mở emulator, rồi chạy:
+
+```powershell
+.\gradlew.bat :app:connectedDebugAndroidTest
+```
+
+`PoseAnalyzerTest` chạy mô hình thật với hai khung hình trắng liên tiếp. Kiểm thử xác nhận bitmap được giải phóng, mỗi khung đều trả về hướng dẫn “không có người”, và bộ phân tích không bị tắt sau khung đầu tiên. Trường hợp này ngăn lỗi đọc độ sáng sau khi `MPImage.close()` đã recycle bitmap. Không cần cấp quyền camera vì kiểm thử dùng ảnh tạo sẵn trên máy.
+
+Workflow GitHub biên dịch APK kiểm thử bằng `assembleDebugAndroidTest`; chưa tự chạy kiểm thử thiết bị này.
+
 ## Ma trận thiết bị
 
 Chọn ít nhất ba máy: Android 8/9, một máy tầm trung Android 10–13, một máy Android 14 trở lên. Ghi model, phiên bản hệ điều hành, RAM, phiên bản APK và kết quả cho từng trường hợp. Ưu tiên máy có ít nhất một thiết bị hiệu năng thấp.

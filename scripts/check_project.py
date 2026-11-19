@@ -50,7 +50,7 @@ def main() -> None:
         check((ROOT / f"app/src/main/java/vn/dunggoc/camera/{name}.kt").is_file(), f"Missing activity: {name}")
     resources: set[str] = set()
     for path, tree in trees.items():
-        if path.parent.name == "values":
+        if path.parent.name == "values" or path.parent.name.startswith("values-"):
             resources.update(f"{child.tag}/{child.attrib['name']}" for child in tree.getroot() if "name" in child.attrib)
         elif path.name != "AndroidManifest.xml":
             resources.add(f"{path.parent.name}/{path.stem}")

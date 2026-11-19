@@ -18,7 +18,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import vn.dunggoc.camera.camera.CameraSession
 import vn.dunggoc.camera.camera.LevelSensor
-import vn.dunggoc.guidance.Guidance
+import vn.dunggoc.guidance.CameraAnalysis
 import vn.dunggoc.guidance.Preferences
 import java.util.concurrent.atomic.AtomicReference
 
@@ -27,7 +27,7 @@ fun CameraPreview(
     preferences: Preferences,
     retry: Int,
     onSession: (CameraSession?) -> Unit,
-    onGuidance: (Guidance) -> Unit,
+    onGuidance: (CameraAnalysis) -> Unit,
     onReady: () -> Unit,
     onError: (String) -> Unit,
     onAnalysisError: () -> Unit,

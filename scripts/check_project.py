@@ -78,9 +78,9 @@ def main() -> None:
     gradle_files = [ROOT / "settings.gradle.kts", ROOT / "build.gradle.kts", ROOT / "app/build.gradle.kts", ROOT / "guidance/build.gradle.kts"]
     for path in kotlin_files + gradle_files:
         check_delimiters(path)
-    tests = (ROOT / "guidance/src/test/kotlin/vn/dunggoc/guidance/GuidanceTest.kt").read_text(encoding="utf-8")
+    test_count = sum(path.read_text(encoding="utf-8").count("@Test") for path in (ROOT / "guidance/src/test").rglob("*.kt"))
     print(f"Structural checks passed: {len(xml_files)} XML files, {len(kotlin_files)} Kotlin files, resources, model packaging, permissions and bootstrap checksum.")
-    print(f"JUnit cases present: {tests.count('@Test')}; NOT executed by this script.")
+    print(f"JUnit cases present: {test_count}; NOT executed by this script.")
     print("Kotlin compilation, lint, APK assembly and device acceptance remain separate checks.")
 
 

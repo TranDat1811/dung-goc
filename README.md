@@ -1,8 +1,16 @@
 # Đúng Góc
 
-Ứng dụng Android hướng dẫn người mới chụp ảnh cho một người bằng camera sau. Giao diện và chỉ dẫn bằng tiếng Việt; ảnh được phân tích trên thiết bị, không gửi lên mạng.
+Ứng dụng Android giúp người mới căn bố cục cảnh và chụp ảnh một người bằng camera sau. Giao diện và chỉ dẫn bằng tiếng Việt; ảnh được phân tích trên thiết bị, không gửi lên mạng.
 
-## Có gì trong bản đầu
+## Chế độ và đường nét gợi ý
+
+- **Tự động / Chụp người / Chụp cảnh**: mặc định tự động, có thể tự chọn bất cứ lúc nào. Tự động chuyển sang người sau 0,5 giây nhận diện ổn định; chuyển sang cảnh sau 1,8 giây không thấy người (0,9 giây khi mới mở), tránh nhảy chế độ vì mất dấu tạm thời.
+- **Chụp người**: một dáng người mờ nằm cố định ở vị trí nên đứng. Đổi dáng, bán thân/toàn thân hoặc chọn chính giữa/một phần ba trái/phải; hướng dẫn căn máy dùng cùng vị trí và tỷ lệ với mẫu. Có nút Đổi dáng ngay trên camera.
+- **Chụp cảnh**: vòng mờ đánh dấu điểm đặt chi tiết chính; đường nét đứt gợi ý vị trí của đường ngang nổi bật. Có thể đổi bố cục, bật/tắt đường nét. Nút chụp luôn ở ngoài vùng điều khiển cuộn.
+- Gợi ý cảnh dựa trên tương phản, màu sắc và cạnh ngang của ảnh thu nhỏ; không phân loại ngữ nghĩa biển/núi/tòa nhà, không hiểu sở thích thẩm mỹ. Tự động phân biệt có người/không thấy người, vì vậy cảnh không có người cũng có thể là đồ vật hoặc nội thất. Chọn chế độ thủ công nếu nhận diện không đúng ý định.
+- Chỉ báo khớp gợi ý khi có điểm nhấn/đường ngang đủ rõ và giữ ổn định. Cảnh ít chi tiết vẫn hiện bố cục tham khảo, không tự báo đã đẹp. Chế độ cảnh thủ công không cần nạp mô hình người.
+
+## Chụp và lưu ảnh
 
 - Camera thật với hướng dẫn căn khung toàn thân/bán thân, tiến/lùi, hướng máy trái/phải và giữ máy thẳng.
 - 5 dáng có hình minh họa: tự nhiên, chống hông, tay ngang eo, chạm tóc, thả tay nhẹ. Có chế độ chỉ căn bố cục.
@@ -65,12 +73,13 @@ Tác vụ kiểm tra kích thước và các tệp detector trong archive, chỉ
 - Phân tích đồng bộ ở `VIDEO` mode trên một executor riêng để dùng tracking, bỏ khung cũ và giới hạn khoảng 2–10 lần/giây tùy tốc độ xử lý; không chặn luồng giao diện. Camera vẫn hiển thị theo nhịp riêng.
 - Bộ quy tắc ưu tiên ánh sáng/khả năng nhận diện, số người, phần cơ thể trong khung, bố cục, độ nghiêng rồi tư thế. Có làm mượt, ngưỡng vào/ra khác nhau và thời gian giữ chỉ dẫn. Điều kiện sẵn sàng cũng kiểm tra điểm thô để không che khuất mất dấu bởi làm mượt.
 - Ảnh chưa lưu nằm trong cache riêng; chụp lại sẽ xóa bản tạm. Dọn các bản tạm quá 24 giờ, trừ ảnh đang xem. Cache có thể bị Android thu hồi; đây không phải kho lưu ảnh lâu dài.
+- `CompositionCoach` chọn người/cảnh, giữ ổn định bố cục đích và chuyển chỉ dẫn phù hợp; `PoseTemplate` cung cấp các tọa độ chuẩn hóa để vẽ dáng mờ. `SceneComposition` chỉ xử lý ảnh thu nhỏ trên CPU, không có mô hình tải thêm hoặc API mạng.
 
 Không có backend, tài khoản, nhận diện danh tính, điểm chấm ngoại hình, tự động chụp, âm thanh, selfie hoặc chế độ nhóm. App không đo khoảng cách theo mét hay suy ra góc máy tối ưu trong không gian 3D. Các dáng được đối chiếu bằng quy tắc hình học tương đối, cần hiệu chỉnh qua thử nghiệm thực tế.
 
 ## Kiểm thử và tình trạng xác minh
 
-`guidance/src/test` chứa 24 ca kiểm thử cho mất người, nhiều người, thiếu sáng, điểm bị che, cắt chân, chừa khoảng trên đầu, bán thân, tiến/lùi, hướng trái/phải, độ nghiêng, từng dáng, thời gian ổn định và hủy khung xanh. Chạy riêng bằng `:guidance:test --configure-on-demand` để chỉ cấu hình module JVM, không cấu hình app Android; vẫn cần JDK/Gradle và các dependency Kotlin/JUnit.
+`guidance/src/test` kiểm thử mất người, nhiều người, thiếu sáng, điểm bị che, cắt chân, bán thân, hướng căn máy, từng dáng, thời gian ổn định, chọn người/cảnh, chế độ thủ công, ảnh phẳng, đường ngang, điểm nhấn và độ khớp giữa mẫu mờ với quy tắc cho mọi dáng/kiểu ảnh/bố cục. Chạy riêng bằng `:guidance:test --configure-on-demand` để chỉ cấu hình module JVM, không cấu hình app Android; vẫn cần JDK/Gradle và các dependency Kotlin/JUnit.
 
 Trong môi trường triển khai ban đầu chưa có Android SDK, Gradle hoặc JDK 17 đầy đủ được cấu hình và tải dependency bị chặn bởi proxy. Vì vậy **chưa biên dịch APK, chưa chạy JUnit/lint và chưa xác minh trên điện thoại**. Có thể chạy `python scripts/check_project.py` để kiểm tra cấu trúc XML, cấu hình, tài nguyên và các ràng buộc đóng gói; kiểm tra này không thay thế việc biên dịch hoặc kiểm thử Android.
 

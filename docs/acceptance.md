@@ -20,6 +20,15 @@ Chọn ít nhất ba máy: Android 8/9, một máy tầm trung Android 10–13, 
 
 ## Luồng chính
 
+- Mở ở chế độ Tự động: đưa người vào khung và giữ ít nhất 0,5 giây, xác nhận nhãn Chụp người và dáng mờ xuất hiện. Che người dưới một giây không được làm nhảy sang cảnh; bỏ người khỏi khung lâu hơn 1,8 giây thì chuyển sang cảnh.
+- Chọn Chụp người khi không có ai: app giữ chế độ này và nhắc đưa người vào khung. Chọn Chụp cảnh khi có người: app giữ chế độ cảnh theo ý người dùng.
+- Chọn bố cục chính giữa, một phần ba trái và phải; xác nhận nét mờ dịch đến đúng vị trí và chỉ dẫn căn máy cũng dùng vị trí đó. Không yêu cầu người quay lại chính giữa khi đang chọn một phần ba.
+- Đổi lần lượt 5 dáng: đường nét mờ phải đổi hình tay ngay trên preview, giữ vị trí đích khi người trong ảnh di chuyển. Kiểm tra đường nét không bị kéo giãn khi xoay máy.
+- Chụp cảnh có đường ngang rõ: nét đứt nằm ở một phần ba trên hoặc dưới. Hướng máy theo chỉ dẫn phải đưa đường ngang đến nét đứt. Thử cảnh có một điểm nhấn rõ và kiểm tra hướng căn tới vòng mờ.
+- Giơ máy vào tường trống: không tự chuyển xanh chỉ vì máy thẳng. Khi đường ngang/điểm nhấn mất đi, trạng thái sẵn sàng phải tắt.
+- Bật/tắt Nét mờ, đổi bố cục, đổi chế độ; không được in đường gợi ý lên ảnh lưu. Nút chụp luôn nhìn thấy kể cả khi cuộn phần điều khiển.
+- Chọn cảnh thủ công ngay cả khi mô hình người không khởi tạo được: phần phân tích bố cục vẫn thử hoạt động độc lập; lỗi chuyển ảnh camera phải hiện lỗi và cho thử lại.
+
 - Cài APK, bật chế độ máy bay trước lần mở đầu; cấp quyền camera và thấy preview cùng hướng dẫn.
 - Toàn thân: đứng đủ trong khung, chọn lần lượt 5 dáng; hướng dẫn phản ánh đúng dáng và chuyển xanh sau khoảng một giây giữ ổn định.
 - Bán thân: lấy khung từ đầu đến hông; không yêu cầu đưa chân vào ảnh. Kiểm tra hình minh họa tương ứng.

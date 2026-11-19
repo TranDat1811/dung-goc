@@ -18,7 +18,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
-import vn.dunggoc.guidance.Guidance
+import vn.dunggoc.guidance.CameraAnalysis
 import vn.dunggoc.guidance.Preferences
 import java.io.Closeable
 import java.io.File
@@ -34,7 +34,7 @@ class CameraSession(
     rotation: Int,
     preferences: AtomicReference<Preferences>,
     roll: AtomicReference<Float?>,
-    onGuidance: (Guidance) -> Unit,
+    onGuidance: (CameraAnalysis) -> Unit,
     private val onCameraReady: () -> Unit,
     private val onError: (String) -> Unit,
     private val onAnalysisError: () -> Unit,

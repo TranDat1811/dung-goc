@@ -16,6 +16,8 @@ import vn.dunggoc.camera.data.PhotoRepository
 import vn.dunggoc.guidance.PoseStyle
 import vn.dunggoc.guidance.Preferences
 import vn.dunggoc.guidance.ShotType
+import vn.dunggoc.guidance.CaptureMode
+import vn.dunggoc.guidance.Composition
 import java.io.File
 
 class CameraViewModel(application: Application, private val state: SavedStateHandle) : AndroidViewModel(application) {
@@ -24,6 +26,9 @@ class CameraViewModel(application: Application, private val state: SavedStateHan
         shot = enumValues<ShotType>().firstOrNull { it.name == state.get<String>("shot") } ?: ShotType.FULL_BODY,
         pose = enumValues<PoseStyle>().firstOrNull { it.name == state.get<String>("pose") } ?: PoseStyle.NATURAL,
         coachPose = state["coachPose"] ?: true,
+        captureMode = CaptureMode.entries.firstOrNull { it.name == state.get<String>("captureMode") } ?: CaptureMode.AUTO,
+        composition = Composition.entries.firstOrNull { it.name == state.get<String>("composition") } ?: Composition.AUTO,
+        showGhost = state["showGhost"] ?: true,
     ))
     val preferences = _preferences.asStateFlow()
     private val _photoPath = MutableStateFlow(photos.resolve(state["photo"])?.path)
@@ -47,6 +52,9 @@ class CameraViewModel(application: Application, private val state: SavedStateHan
         state["shot"] = value.shot.name
         state["pose"] = value.pose.name
         state["coachPose"] = value.coachPose
+        state["captureMode"] = value.captureMode.name
+        state["composition"] = value.composition.name
+        state["showGhost"] = value.showGhost
     }
 
     fun captured(file: File) {

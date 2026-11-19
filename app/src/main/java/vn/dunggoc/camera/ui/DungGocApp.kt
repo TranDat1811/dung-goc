@@ -55,6 +55,7 @@ import kotlinx.coroutines.delay
 import vn.dunggoc.camera.CameraViewModel
 import vn.dunggoc.camera.camera.CameraSession
 import vn.dunggoc.guidance.*
+import vn.dunggoc.guidance.Composition
 
 val Lime = Color(0xFFC9F27B)
 private val Ink = Color(0xFF101411)
@@ -123,10 +124,10 @@ fun DungGocApp(model: CameraViewModel = viewModel()) {
         }
         if (help) AlertDialog(onDismissRequest = { help = false }, title = { Text("Một chút hướng dẫn") },
             text = { Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("1. Chọn ảnh toàn thân hoặc bán thân, rồi chọn dáng bạn thích.")
-                Text("2. Làm theo từng câu nhắc. Nhãn “Người chụp” dành cho người cầm máy; “Người tạo dáng” dành cho người trong ảnh.")
+                Text("1. Giơ máy lên. Chế độ Tự động gợi ý chụp người khi thấy người, hoặc bố cục cảnh khi không thấy người. Bạn có thể tự chọn Chụp người / Chụp cảnh.")
+                Text("2. Căn người theo dáng mờ hoặc đưa điểm nhấn của cảnh vào vòng mờ. Chọn Bố cục để đổi vị trí, Đổi dáng để xem dáng khác.")
                 Text("3. Giữ yên khi khung chuyển xanh, rồi bấm chụp. Bạn cũng có thể chụp bất kỳ lúc nào.")
-                Text("Khung xanh xác nhận đã căn chỉnh theo gợi ý. Hãy chọn khoảnh khắc bạn thích nhất.", color = Muted)
+                Text("Nét xanh xác nhận đã căn chỉnh theo gợi ý. Bố cục cảnh dựa trên tương phản và đường ngang, bạn vẫn quyết định điểm nhấn và khoảnh khắc.", color = Muted)
                 Text("Ảnh được xử lý trên điện thoại và chỉ lưu vào thư viện khi bạn chọn lưu.", color = Muted)
             } }, confirmButton = { TextButton(onClick = { help = false }) { Text("Mình hiểu rồi") } })
     }
@@ -135,15 +136,26 @@ fun DungGocApp(model: CameraViewModel = viewModel()) {
 @Composable
 private fun ShootingScreen(preferences: Preferences, active: Boolean, model: CameraViewModel, modifier: Modifier) {
     var choosePose by rememberSaveable { mutableStateOf(false) }
+    var chooseComposition by rememberSaveable { mutableStateOf(false) }
     var retry by remember { mutableIntStateOf(0) }
     // Invalidate prior instructions immediately after a preference change or resume.
-    var guide by remember(preferences, active, retry) { mutableStateOf(Guidance(Code.NO_PERSON, Actor.CAMERA, "Đưa một người vào khung hình")) }
+    var guide by remember(preferences, active, retry) { mutableStateOf(Guidance(Code.SEARCHING, Actor.STATUS, "Đang quan sát khung hình…")) }
+    var detectedPlan by remember(active, retry) { mutableStateOf(CompositionPlan(Subject.UNKNOWN, Composition.CENTER, .5f)) }
+    val plan = detectedPlan.copy(
+        subject = when (preferences.captureMode) {
+            CaptureMode.AUTO -> detectedPlan.subject
+            CaptureMode.PERSON -> Subject.PERSON
+            CaptureMode.SCENE -> Subject.SCENE
+        },
+        composition = if (preferences.composition == Composition.AUTO) detectedPlan.composition else preferences.composition,
+        targetX = if (preferences.composition == Composition.AUTO) detectedPlan.targetX else preferences.composition.targetX,
+    )
     var lastGuideAt by remember(preferences, active, retry) { mutableLongStateOf(0L) }
     var session by remember { mutableStateOf<CameraSession?>(null) }
     var ready by remember(active) { mutableStateOf(false) }
     var capturing by remember(active) { mutableStateOf(false) }
     var cameraError by remember(active) { mutableStateOf<String?>(null) }
-    var analysisError by remember(active) { mutableStateOf(false) }
+    var analysisError by remember(active, preferences.captureMode) { mutableStateOf(false) }
     LaunchedEffect(preferences, active, retry) {
         while (active) {
             delay(300)
@@ -173,16 +185,36 @@ private fun ShootingScreen(preferences: Preferences, active: Boolean, model: Cam
     }
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val landscape = maxWidth > maxHeight
-        val portraitControlsHeight = maxHeight * 0.5f
+        val portraitControlsHeight = (maxHeight - 88.dp) * 0.43f
         val cameraContent: @Composable (Modifier) -> Unit = { cameraModifier ->
             Box(cameraModifier.clip(RoundedCornerShape(24.dp)).background(Panel)) {
                 if (active) CameraPreview(preferences, retry,
-                    onSession = { session = it; ready = false }, onGuidance = { guide = it; lastGuideAt = SystemClock.elapsedRealtime() },
+                    onSession = { session = it; ready = false }, onGuidance = {
+                        val matchesMode = preferences.captureMode == CaptureMode.AUTO ||
+                            (preferences.captureMode == CaptureMode.PERSON && it.plan.subject == Subject.PERSON) ||
+                            (preferences.captureMode == CaptureMode.SCENE && it.plan.subject == Subject.SCENE)
+                        if (matchesMode) {
+                            guide = it.guidance
+                            detectedPlan = it.plan
+                            lastGuideAt = SystemClock.elapsedRealtime()
+                        }
+                    },
                     onReady = { ready = true }, onError = { cameraError = it },
                     onAnalysisError = { analysisError = true }, modifier = Modifier.fillMaxSize())
-                if (ready && cameraError == null && !analysisError) CameraOverlay(guide, preferences.shot, Modifier.fillMaxSize())
+                if (ready && cameraError == null && !analysisError) {
+                    CameraOverlay(guide, Modifier.fillMaxSize())
+                    if (preferences.showGhost) CompositionGhost(plan, preferences, guide.ready, Modifier.fillMaxSize())
+                }
                 Surface(Modifier.align(Alignment.TopStart).padding(14.dp), color = Ink.copy(alpha = 0.72f), shape = CircleShape) {
-                    Text("●  ${preferences.shot.label}", Modifier.padding(horizontal = 12.dp, vertical = 7.dp), color = Paper, fontSize = 12.sp)
+                    Text("●  ${plan.subject.label}", Modifier.padding(horizontal = 12.dp, vertical = 7.dp), color = Paper, fontSize = 12.sp)
+                }
+                if (plan.subject != Subject.UNKNOWN) Surface(
+                    onClick = { if (plan.subject == Subject.PERSON) choosePose = true else chooseComposition = true },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(14.dp),
+                    color = Ink.copy(alpha = .72f), shape = CircleShape,
+                ) {
+                    Text(if (plan.subject == Subject.PERSON) "Đổi dáng  ›" else "Bố cục  ›",
+                        Modifier.padding(horizontal = 12.dp, vertical = 9.dp), color = Lime, fontSize = 12.sp)
                 }
                 if (!ready && cameraError == null) Text(if (active) "Đang mở camera…" else "Camera đang nghỉ",
                     Modifier.align(Alignment.Center).padding(20.dp), color = Paper)
@@ -197,6 +229,25 @@ private fun ShootingScreen(preferences: Preferences, active: Boolean, model: Cam
         }
         val controls: @Composable (Modifier) -> Unit = { controlsModifier ->
             Column(controlsModifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    CaptureMode.entries.forEach { mode ->
+                        FilterChip(selected = preferences.captureMode == mode,
+                            onClick = { model.setPreferences(preferences.copy(captureMode = mode)) },
+                            label = { Text(mode.label, fontSize = 12.sp) }, modifier = Modifier.weight(1f),
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Lime, selectedLabelColor = Ink))
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { chooseComposition = true }, modifier = Modifier.weight(1f)) {
+                        Text("Bố cục: ${if (preferences.composition == Composition.AUTO) "Tự chọn" else preferences.composition.label}  ›", fontSize = 12.sp)
+                    }
+                    Text("Nét mờ", color = Muted, fontSize = 12.sp)
+                    Switch(checked = preferences.showGhost, onCheckedChange = { model.setPreferences(preferences.copy(showGhost = it)) },
+                        modifier = Modifier.semantics { contentDescription = "Hiện đường nét gợi ý trên camera" })
+                }
+                Text(plan.title, color = Muted, fontSize = 11.sp)
+                GuideCard(if (analysisError || cameraError != null) null else guide)
+                if (plan.subject == Subject.PERSON || preferences.captureMode == CaptureMode.PERSON) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ShotType.entries.forEach { shot ->
                         FilterChip(selected = preferences.shot == shot,
@@ -205,11 +256,10 @@ private fun ShootingScreen(preferences: Preferences, active: Boolean, model: Cam
                             colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Lime, selectedLabelColor = Ink))
                     }
                 }
-                GuideCard(if (analysisError || cameraError != null) null else guide)
                 Surface(onClick = { choosePose = true }, color = Panel, shape = RoundedCornerShape(18.dp)) {
                     Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        PoseIllustration(preferences.pose, preferences.shot, Modifier.width(40.dp).height(64.dp))
+                        PoseIllustration(preferences.pose, preferences.shot, Modifier.width(32.dp).height(48.dp))
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text(if (preferences.coachPose) "DÁNG ĐANG CHỌN" else "CHỈ CĂN BỐ CỤC", fontSize = 10.sp, letterSpacing = 1.4.sp, color = Muted)
                             Text(if (preferences.coachPose) preferences.pose.label else "Tạo dáng theo ý bạn", fontWeight = FontWeight.Medium)
@@ -217,20 +267,20 @@ private fun ShootingScreen(preferences: Preferences, active: Boolean, model: Cam
                         Text("Đổi  ›", color = Lime, fontSize = 13.sp)
                     }
                 }
-                Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Bạn chọn khoảnh khắc.", fontSize = 13.sp)
-                        Text("Mình giúp bạn căn máy.", color = Muted, fontSize = 12.sp)
-                    }
-                    Shutter(enabled = ready && active && !capturing && cameraError == null, capturing = capturing, onClick = takePhoto)
-                    Spacer(Modifier.width(8.dp))
+                }
+                if (plan.subject == Subject.SCENE) {
+                    Text("Đường ngang và vòng mờ là vị trí nên căn. Có thể đổi bố cục khi bạn muốn nhấn vào chi tiết khác.",
+                        color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                 }
             }
         }
         if (landscape) {
             Row(Modifier.fillMaxSize().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 cameraContent(Modifier.weight(1f).fillMaxHeight())
-                controls(Modifier.widthIn(max = 320.dp).weight(0.85f).fillMaxHeight())
+                Column(Modifier.widthIn(max = 320.dp).weight(0.85f).fillMaxHeight()) {
+                    controls(Modifier.fillMaxWidth().weight(1f))
+                    CaptureFooter(ready && active && !capturing && cameraError == null, capturing, takePhoto)
+                }
             }
         } else {
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -238,10 +288,25 @@ private fun ShootingScreen(preferences: Preferences, active: Boolean, model: Cam
                 // A fixed control region keeps new instruction text from resizing
                 // the shared camera ViewPort and restarting the camera session.
                 controls(Modifier.fillMaxWidth().height(portraitControlsHeight))
+                CaptureFooter(ready && active && !capturing && cameraError == null, capturing, takePhoto)
             }
         }
     }
     if (choosePose) PosePicker(preferences, onSelect = { model.setPreferences(it); choosePose = false }, onDismiss = { choosePose = false })
+    if (chooseComposition) CompositionPicker(preferences, onSelect = { model.setPreferences(it); chooseComposition = false },
+        onDismiss = { chooseComposition = false })
+}
+
+@Composable
+private fun CaptureFooter(enabled: Boolean, capturing: Boolean, takePhoto: () -> Unit) {
+    Row(Modifier.fillMaxWidth().height(80.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Căn theo nét mờ.", fontSize = 13.sp)
+            Text("Chụp khi bạn thấy thích.", color = Muted, fontSize = 12.sp)
+        }
+        Shutter(enabled, capturing, takePhoto)
+        Spacer(Modifier.width(8.dp))
+    }
 }
 
 @Composable
@@ -256,37 +321,21 @@ private fun GuideCard(guide: Guidance?) {
 }
 
 @Composable
-private fun CameraOverlay(guide: Guidance, shot: ShotType, modifier: Modifier) {
+private fun CameraOverlay(guide: Guidance, modifier: Modifier) {
     Canvas(modifier) {
         val w = size.width
         val h = size.height
-        val color = if (guide.ready) Lime else Paper.copy(alpha = 0.65f)
-        for (i in 1..2) {
-            drawLine(Paper.copy(alpha = 0.13f), Offset(w * i / 3f, 0f), Offset(w * i / 3f, h), 1.dp.toPx())
-            drawLine(Paper.copy(alpha = 0.13f), Offset(0f, h * i / 3f), Offset(w, h * i / 3f), 1.dp.toPx())
-        }
-        val left = w * if (shot == ShotType.FULL_BODY) 0.18f else 0.12f
-        val right = w - left
-        val top = h * 0.08f
-        val bottom = h * 0.93f
-        val corner = 24.dp.toPx().coerceAtMost(w * 0.1f)
-        for ((x, dx) in listOf(left to 1f, right to -1f)) {
-            for ((y, dy) in listOf(top to 1f, bottom to -1f)) {
-                drawLine(color, Offset(x, y), Offset(x + corner * dx, y), 2.dp.toPx())
-                drawLine(color, Offset(x, y), Offset(x, y + corner * dy), 2.dp.toPx())
-            }
-        }
         if (guide.cue == Cue.LEVEL) {
             drawLine(Lime, Offset(w * 0.25f, h / 2), Offset(w * 0.75f, h / 2), 2.dp.toPx())
             drawCircle(Lime, 5.dp.toPx(), Offset(w / 2, h / 2))
         }
-        if (guide.cue in listOf(Cue.LEFT, Cue.RIGHT, Cue.FORWARD, Cue.BACK)) {
+        if (guide.cue in listOf(Cue.LEFT, Cue.RIGHT, Cue.UP, Cue.DOWN, Cue.FORWARD, Cue.BACK)) {
             val cx = w / 2
             val cy = h * 0.76f
             val d = 18.dp.toPx()
             drawCircle(Ink.copy(alpha = 0.7f), d * 1.7f, Offset(cx, cy))
             val horizontal = guide.cue == Cue.LEFT || guide.cue == Cue.RIGHT
-            val sign = if (guide.cue == Cue.LEFT || guide.cue == Cue.FORWARD) -1 else 1
+            val sign = if (guide.cue == Cue.LEFT || guide.cue == Cue.UP || guide.cue == Cue.FORWARD) -1 else 1
             val start = if (horizontal) Offset(cx - d * sign, cy) else Offset(cx, cy - d * sign)
             val end = if (horizontal) Offset(cx + d * sign, cy) else Offset(cx, cy + d * sign)
             drawLine(Lime, start, end, 3.dp.toPx())
@@ -324,6 +373,13 @@ private fun PosePicker(preferences: Preferences, onSelect: (Preferences) -> Unit
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Một dáng thật thoải mái", fontSize = 24.sp, fontWeight = FontWeight.Medium)
             Text("Chọn một dáng để mình hướng dẫn từng bước.", color = Muted)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ShotType.entries.forEach { shot ->
+                    FilterChip(selected = preferences.shot == shot,
+                        onClick = { onSelect(preferences.copy(shot = shot)) }, label = { Text(shot.label) },
+                        modifier = Modifier.weight(1f))
+                }
+            }
             PoseStyle.entries.forEach { pose ->
                 val selected = preferences.coachPose && preferences.pose == pose
                 Surface(onClick = { onSelect(preferences.copy(pose = pose, coachPose = true)) },

@@ -53,13 +53,17 @@ data class Preferences(
     val shot: ShotType = ShotType.FULL_BODY,
     val pose: PoseStyle = PoseStyle.NATURAL,
     val coachPose: Boolean = true,
+    val captureMode: CaptureMode = CaptureMode.AUTO,
+    val composition: Composition = Composition.AUTO,
+    val showGhost: Boolean = true,
 )
 
 enum class Actor(val label: String) { CAMERA("Người chụp"), SUBJECT("Người tạo dáng"), STATUS("Trợ lý chụp ảnh") }
-enum class Cue { NONE, LEFT, RIGHT, BACK, FORWARD, LEVEL, POSE, CHECK }
+enum class Cue { NONE, LEFT, RIGHT, UP, DOWN, BACK, FORWARD, LEVEL, POSE, CHECK }
 enum class Code {
     NO_PERSON, MULTIPLE_PEOPLE, UNCLEAR, DARK, STEP_BACK, STEP_CLOSER,
     PAN_LEFT, PAN_RIGHT, LEVEL, SHOW_HANDS, ADJUST_POSE, HOLD, READY,
+    SEARCHING, COMPOSE, PAN_UP, PAN_DOWN,
 }
 
 data class Guidance(val code: Code, val actor: Actor, val text: String, val cue: Cue = Cue.NONE) {
@@ -67,7 +71,8 @@ data class Guidance(val code: Code, val actor: Actor, val text: String, val cue:
 }
 
 object GuidanceRules {
-    fun evaluate(frame: Observation, preferences: Preferences, previous: Code? = null): Guidance {
+    fun evaluate(frame: Observation, preferences: Preferences, previous: Code? = null, targetX: Float = 0.5f,
+                 targetHeight: Float? = null): Guidance {
         fun camera(code: Code, text: String, cue: Cue = Cue.NONE) = Guidance(code, Actor.CAMERA, text, cue)
         if (frame.luminance < 0.08f) return camera(Code.DARK, "Tìm nơi sáng hơn để nhận diện rõ")
         if (frame.bodies.isEmpty()) return camera(Code.NO_PERSON, "Đưa một người vào khung hình")
@@ -99,11 +104,19 @@ object GuidanceRules {
             return camera(Code.STEP_BACK, "Lùi một chút, chừa khoảng trống quanh người", Cue.BACK)
         }
         val center = (left.x + right.x) / 2f
-        val centerTolerance = if (previous == Code.PAN_LEFT || previous == Code.PAN_RIGHT) 0.07f else 0.11f
-        if (center < 0.5f - centerTolerance) return camera(Code.PAN_LEFT, "Hướng máy sang trái một chút", Cue.LEFT)
-        if (center > 0.5f + centerTolerance) return camera(Code.PAN_RIGHT, "Hướng máy sang phải một chút", Cue.RIGHT)
-        val minHeight = if (previous == Code.STEP_CLOSER) 0.69f else 0.62f
+        val centerTolerance = if (targetHeight != null) {
+            if (previous == Code.PAN_LEFT || previous == Code.PAN_RIGHT) .04f else .07f
+        } else if (previous == Code.PAN_LEFT || previous == Code.PAN_RIGHT) 0.07f else 0.11f
+        if (center < targetX - centerTolerance) return camera(Code.PAN_LEFT, "Hướng máy sang trái để người khớp nét mờ", Cue.LEFT)
+        if (center > targetX + centerTolerance) return camera(Code.PAN_RIGHT, "Hướng máy sang phải để người khớp nét mờ", Cue.RIGHT)
+        val minHeight = targetHeight?.let { it * if (previous == Code.STEP_CLOSER) .94f else .86f }
+            ?: if (previous == Code.STEP_CLOSER) 0.69f else 0.62f
         if (bottom - top < minHeight) return camera(Code.STEP_CLOSER, "Tiến gần hơn một chút", Cue.FORWARD)
+        if (targetHeight != null) {
+            val targetTop = if (preferences.shot == ShotType.FULL_BODY) .075f else .05f
+            if (top > targetTop + .08f) return camera(Code.PAN_DOWN, "Hướng máy xuống để người khớp vị trí mờ", Cue.DOWN)
+            if (top < targetTop - .05f) return camera(Code.PAN_UP, "Hướng máy lên để chừa khoảng trên đầu", Cue.UP)
+        }
         val maxRoll = if (previous == Code.LEVEL) 3f else 6f
         if (frame.rollDegrees?.let { abs(it) > maxRoll } == true) return camera(Code.LEVEL, "Giữ máy thẳng theo vạch ngang", Cue.LEVEL)
 
@@ -172,7 +185,8 @@ class GuidanceCoach {
         displayedAt = 0L
     }
 
-    fun update(frame: Observation, preferences: Preferences, nowMs: Long): Guidance {
+    fun update(frame: Observation, preferences: Preferences, nowMs: Long, targetX: Float = 0.5f,
+               targetHeight: Float? = null): Guidance {
         if (preferences != lastPreferences || previousTime < 0 || nowMs - previousTime > 1_500 || nowMs < previousTime) {
             reset()
             lastPreferences = preferences
@@ -185,8 +199,8 @@ class GuidanceCoach {
             if (point.visible() && past.visible()) point.copy(x = past.x * 0.55f + point.x * 0.45f, y = past.y * 0.55f + point.y * 0.45f) else point
         })
         // Raw geometry prevents smoothing from hiding a newly cropped limb or a sudden movement.
-        val raw = GuidanceRules.evaluate(frame, preferences, displayed.code)
-        val filtered = GuidanceRules.evaluate(frame.copy(bodies = smoothed?.let(::listOf) ?: frame.bodies), preferences, displayed.code)
+        val raw = GuidanceRules.evaluate(frame, preferences, displayed.code, targetX, targetHeight)
+        val filtered = GuidanceRules.evaluate(frame.copy(bodies = smoothed?.let(::listOf) ?: frame.bodies), preferences, displayed.code, targetX, targetHeight)
         val invalid = setOf(Code.NO_PERSON, Code.MULTIPLE_PEOPLE, Code.UNCLEAR, Code.DARK, Code.STEP_BACK, Code.SHOW_HANDS)
         var next = if (raw.code in invalid || raw.code != Code.READY && filtered.code == Code.READY) raw else filtered
         if (next.ready) {

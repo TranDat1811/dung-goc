@@ -11,8 +11,10 @@ import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
 import vn.dunggoc.guidance.Body
-import vn.dunggoc.guidance.Guidance
-import vn.dunggoc.guidance.GuidanceCoach
+import vn.dunggoc.guidance.CameraAnalysis
+import vn.dunggoc.guidance.CompositionCoach
+import vn.dunggoc.guidance.SceneComposition
+import vn.dunggoc.guidance.CaptureMode
 import vn.dunggoc.guidance.Observation
 import vn.dunggoc.guidance.Point
 import vn.dunggoc.guidance.Preferences
@@ -24,17 +26,23 @@ class PoseAnalyzer(
     private val context: Context,
     private val preferences: AtomicReference<Preferences>,
     private val roll: AtomicReference<Float?>,
-    private val onGuidance: (Guidance) -> Unit,
+    private val onGuidance: (CameraAnalysis) -> Unit,
     private val onError: (Throwable) -> Unit,
 ) : ImageAnalysis.Analyzer, Closeable {
     private var landmarker: PoseLandmarker? = null
-    private val coach = GuidanceCoach()
+    private val coach = CompositionCoach()
     private var lastFrame = -1L
     private var intervalMs = 100L
     private var failed = false
+    private var lastMode: CaptureMode? = null
 
     override fun analyze(image: ImageProxy) {
         val now = SystemClock.uptimeMillis()
+        val currentPreferences = preferences.get()
+        if (currentPreferences.captureMode != lastMode) {
+            failed = false
+            lastMode = currentPreferences.captureMode
+        }
         if (failed || now - lastFrame < intervalMs) {
             image.close()
             return
@@ -44,17 +52,6 @@ class PoseAnalyzer(
         var cropped: Bitmap? = null
         var upright: Bitmap? = null
         try {
-            val detector = landmarker ?: PoseLandmarker.createFromOptions(
-                context,
-                PoseLandmarker.PoseLandmarkerOptions.builder()
-                    .setBaseOptions(BaseOptions.builder().setModelAssetPath("pose_landmarker_lite.task").build())
-                    .setRunningMode(RunningMode.VIDEO)
-                    .setNumPoses(2)
-                    .setMinPoseDetectionConfidence(0.6f)
-                    .setMinPosePresenceConfidence(0.6f)
-                    .setMinTrackingConfidence(0.6f)
-                    .build(),
-            ).also { landmarker = it }
             // All use cases share a CameraX ViewPort. Crop BEFORE rotation so the
             // analyzed bitmap, the visible preview and the saved photo agree.
             val sourceBitmap = image.toBitmap()
@@ -68,16 +65,31 @@ class PoseAnalyzer(
             // MPImage.close() recycles the wrapped bitmap. Read every pixel and
             // dimension we need before handing ownership to MediaPipe.
             val aspectRatio = bitmap.width.toFloat() / bitmap.height
-            val brightness = luminance(bitmap)
-            val mpImage = BitmapImageBuilder(bitmap).build()
-            val result = try { detector.detectForVideo(mpImage, now) } finally { mpImage.close() }
-            val bodies = result.landmarks().map { landmarks ->
-                Body(landmarks.map { point ->
-                    Point(point.x(), point.y(), minOf(point.visibility().orElse(0f), point.presence().orElse(0f)))
-                })
+            val scene = sampleScene(bitmap)
+            // Explicit scene mode only needs image structure, so it remains usable
+            // without loading the pose model or its native inference runtime.
+            val bodies = if (currentPreferences.captureMode == CaptureMode.SCENE) emptyList() else {
+                val detector = landmarker ?: PoseLandmarker.createFromOptions(
+                    context,
+                    PoseLandmarker.PoseLandmarkerOptions.builder()
+                        .setBaseOptions(BaseOptions.builder().setModelAssetPath("pose_landmarker_lite.task").build())
+                        .setRunningMode(RunningMode.VIDEO)
+                        .setNumPoses(2)
+                        .setMinPoseDetectionConfidence(0.6f)
+                        .setMinPosePresenceConfidence(0.6f)
+                        .setMinTrackingConfidence(0.6f)
+                        .build(),
+                ).also { landmarker = it }
+                val mpImage = BitmapImageBuilder(bitmap).build()
+                val result = try { detector.detectForVideo(mpImage, now) } finally { mpImage.close() }
+                result.landmarks().map { landmarks ->
+                    Body(landmarks.map { point ->
+                        Point(point.x(), point.y(), minOf(point.visibility().orElse(0f), point.presence().orElse(0f)))
+                    })
+                }
             }
             onGuidance(coach.update(Observation(bodies, aspectRatio,
-                roll.get(), brightness), preferences.get(), now))
+                roll.get(), scene.brightness), scene, currentPreferences, now))
             // Never queue inference work. Slow devices analyze less frequently.
             val elapsed = SystemClock.uptimeMillis() - now
             intervalMs = (elapsed * 2).coerceIn(100L, 500L)
@@ -94,23 +106,22 @@ class PoseAnalyzer(
         }
     }
 
-    private fun luminance(bitmap: Bitmap): Float {
-        var total = 0.0
-        var count = 0
-        for (y in 0 until bitmap.height step maxOf(1, bitmap.height / 16)) {
-            for (x in 0 until bitmap.width step maxOf(1, bitmap.width / 16)) {
-                val pixel = bitmap.getPixel(x, y)
-                total += (0.2126 * ((pixel shr 16) and 255) + 0.7152 * ((pixel shr 8) and 255) + 0.0722 * (pixel and 255)) / 255.0
-                count++
-            }
+    private fun sampleScene(bitmap: Bitmap): vn.dunggoc.guidance.SceneFeatures {
+        val scale = 64f / maxOf(bitmap.width, bitmap.height)
+        val thumbnail = Bitmap.createScaledBitmap(bitmap, maxOf(3, (bitmap.width * scale).toInt()),
+            maxOf(3, (bitmap.height * scale).toInt()), false)
+        try {
+            val pixels = IntArray(thumbnail.width * thumbnail.height)
+            thumbnail.getPixels(pixels, 0, thumbnail.width, 0, 0, thumbnail.width, thumbnail.height)
+            return SceneComposition.analyze(pixels, thumbnail.width, thumbnail.height)
+        } finally {
+            if (thumbnail !== bitmap) thumbnail.recycle()
         }
-        return (total / count.coerceAtLeast(1)).toFloat()
     }
 
     override fun close() {
         landmarker?.close()
         landmarker = null
-        coach.reset()
     }
 }
 
